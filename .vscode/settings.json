@@ -1,0 +1,4 @@
+{
+  "appService.defaultWebAppToDeploy": "/subscriptions/4bc2af36-3871-4aed-be75-647835cb8ac0/resourceGroups/AppServiceQS-rg1/providers/Microsoft.Web/sites/telegram-bot-express-app",
+  "appService.deploySubpath": "."
+}
