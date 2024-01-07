@@ -10,6 +10,7 @@ var usersRouter = require("./routes/users");
 const bodyParser = require("body-parser");
 
 const puppeteer = require("puppeteer");
+const cheerio = require("cheerio");
 
 require("dotenv").config();
 
@@ -17,75 +18,68 @@ const fs = require("fs");
 
 const URL = "https://parade.com/968666/parade/chuck-norris-jokes/";
 
+const { createBot } = require("./bot");
+let jokesData = [];
+
 var app = express();
 
 const SERVER_URL = "telegram-bot-express-app.azurewebsites.net";
 
-const { createBot } = require("./bot");
-const { fetchPageHTML, fetchJokesFromPageHTML } = require("./webScraper");
+function fetchJokesFromHTMLFile() {
+  const htmlContent = fs.readFileSync("page_content.html", "utf8");
+  const $ = cheerio.load(htmlContent);
+  const jokesElements = $(".m-detail--body li");
 
-const filePath = path.join(__dirname, "page_content.html");
-
-fs.access(filePath, fs.constants.F_OK, (err) => {
-  if (err) {
-    try {
-      (async () => {
-        // const browser = await puppeteer.connect({
-        //   browserWSEndpoint: "wss://chrome.browserless.io/",
-        // });
-        const browser = await puppeteer.launch({
-          headless: true,
-          defaultViewport: null,
-          args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        });
-
-        const page = await browser.newPage();
-        await page.goto(URL);
-        const htmlContent = await page.content();
-
-        //console.log(htmlContent);
-
-        // Save HTML content to a file
-        fs.writeFile("page_content.html", htmlContent, (err) => {
-          if (err) {
-            console.error("Error writing file:", err);
-          } else {
-            console.log("File saved successfully!");
-            //console.log(htmlContent);
-          }
-        });
-
-        const jokesHTML = await page.$$(".m-detail--body li");
-
-        jokesData = jokesHTML.map((jokeHTML) =>
-          jokeHTML.evaluate((node) => node.textContent)
-        );
-
-        // Convert the list to a JSON string
-        const jsonData = JSON.stringify(jokesData, null, 2);
-
-        // Write the JSON string to a file
-        fs.writeFile("jokesList.json", jsonData, "utf8", (err) => {
-          if (err) {
-            console.error("Error writing file:", err);
-          } else {
-            console.log("File saved successfully!");
-          }
-        });
-        // await browser.close;
-        // const pages = await browser.pages();
-        // for (let i = 0; i < pages.length; i++) {
-        //   await pages[i].close();
-        // }
-        //await browser.close();
-      })();
-    } catch (error) {
-      console.log(error);
-    }
+  if (jokesElements.length > 0) {
+    jokesElements.each((index, element) => {
+      const text = $(element).text().trim();
+      jokesData.push(text);
+    });
+  } else {
+    console.log("No elements found with the specified selector.");
   }
-});
+  return jokesData;
+}
 
-createBot();
+const pageContentFilePath = path.join(__dirname, "page_content.html");
+
+// fetch web page's HTML only one time and save it to a file, to avoid browser blocking.
+// fetch only if this file is not exist.
+
+if (!fs.existsSync(pageContentFilePath)) {
+  // scrape jokes web page
+  try {
+    (async () => {
+      const browser = await puppeteer.launch({
+        headless: true,
+        defaultViewport: null,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      });
+
+      const page = await browser.newPage();
+      await page.goto(URL);
+      const htmlContent = await page.content();
+
+      fs.writeFileSync("page_content.html", htmlContent, (err) => {
+        if (err) {
+          console.error("Error writing file:", err);
+        } else {
+          console.log("File saved successfully!");
+        }
+      });
+
+      jokesData = fetchJokesFromHTMLFile();
+
+      //await browser.close();
+    })();
+  } catch (error) {
+    console.log(error);
+  }
+} else {
+  jokesData = fetchJokesFromHTMLFile();
+}
+
+createBot(jokesData);
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
@@ -117,13 +111,5 @@ app.use(function (err, req, res, next) {
 });
 
 app.use(bodyParser.json());
-
-// // Handle incoming webhook updates from Telegram
-// app.post("/webhook", (req, res) => {
-//   const { message } = req.body;
-//   console.log("Received message:", message);
-//   // Handle the received message here
-//   res.sendStatus(200); // Respond to the Telegram server
-// });
 
 module.exports = app;

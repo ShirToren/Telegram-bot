@@ -6,11 +6,10 @@ const translatorEndpoint = "https://api.cognitive.microsofttranslator.com/";
 const subscriptionKey = "40d3984a6e53407ba91fbd316ab69d67";
 const botToken = process.env.BOT_TOKEN;
 const textToTranslate = "No problem";
-const { fetchPageHTML, fetchJokesFromPageHTML } = require("./webScraper");
+
 let languageCodes;
-let jokesData = [];
-let targetLanguageCode;
 let targetLanguage;
+let targetLanguageCode;
 
 function findLanguageCode(language) {
   const capitalizedLanguage =
@@ -30,29 +29,9 @@ function readLanguagesCodes() {
   });
 }
 
-function translateText(textToTranslate, languageCode) {
-  let result = "";
-  const translateUrl = `${translatorEndpoint}/translate?api-version=3.0&to=${languageCode}`;
-  axios
-    .post(translateUrl, [{ text: textToTranslate }], {
-      headers: {
-        "Ocp-Apim-Subscription-Key": subscriptionKey,
-        "Content-type": "application/json",
-      },
-    })
-    .then((response) => {
-      result = response.data[0].translations[0].text;
-    })
-    .catch((error) => {
-      console.error("Translation error:", error.response.data.error.message);
-    });
-  return result;
-}
-
-function createBot() {
-  //fetchPageHTML();
-  jokesData = fetchJokesFromPageHTML();
+function createBot(jokesData) {
   readLanguagesCodes();
+
   const bot = new Telegraf(botToken);
 
   bot.start((ctx) => {
@@ -60,13 +39,14 @@ function createBot() {
   });
 
   bot.hears("hi", (ctx) => ctx.reply("Hey there"));
+  // set language
   bot.hears(/^set language (.+)/i, (ctx) => {
     const message = ctx.message.text;
     const language = message.substring(13);
     targetLanguage = language;
     targetLanguageCode = findLanguageCode(targetLanguage);
 
-    //////
+    // translate response "No problem"
     const translateUrl = `${translatorEndpoint}/translate?api-version=3.0&to=${targetLanguageCode}`;
     axios
       .post(translateUrl, [{ text: textToTranslate }], {
@@ -83,19 +63,20 @@ function createBot() {
         ctx.reply(error.response.data.error.message);
       });
   });
-
+  // show a joke by number
   bot.on("text", (ctx) => {
     const userInput = parseInt(ctx.message.text);
 
     if (!isNaN(userInput)) {
       if (!targetLanguageCode) {
+        // the user asked for a joke without setting language before
         ctx.reply("Please set language first");
       } else {
         try {
           const index = userInput - 1; // Adjust to zero-based index
           if (index >= 0 && index < jokesData.length) {
             const requestedJoke = jokesData[index];
-            //////
+            // translate the requested joke
             const translateUrl = `${translatorEndpoint}/translate?api-version=3.0&to=${targetLanguageCode}`;
             axios
               .post(translateUrl, [{ text: requestedJoke }], {
@@ -116,6 +97,7 @@ function createBot() {
                 );
               });
           } else {
+            // index out of range
             const translateUrl = `${translatorEndpoint}/translate?api-version=3.0&to=${targetLanguageCode}`;
             axios
               .post(
@@ -148,11 +130,8 @@ function createBot() {
     }
   });
 
-  //bot.telegram.getWebhookInfo().then(console.log);
   bot.launch();
 }
 module.exports = {
   createBot,
-  findLanguageCode,
-  readLanguagesCodes,
 };
